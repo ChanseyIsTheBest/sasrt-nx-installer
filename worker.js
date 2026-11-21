@@ -20,7 +20,7 @@ import { reencodeUsm } from './lib/usmh.js';
 const ROOT = 'switch/sasrt-nx';
 // The share of a file left after packing, for the size of the download before it is known (test/game_node.mjs's
 // measures on SASRT's files; xmop: the seven packages together).
-const KEPT = { lz4: 0.62, zxc: 0.95, xmop: 0.45, hevc: 0.22 };
+const KEPT = { lz4: 0.47, zxc: 0.90, xmop: 0.55, hevc: 0.35 };  // 2026-11-21: GameAssets 44 %, Frontend 68 %
 const log = (text) => postMessage({ type: 'log', text });
 
 async function fetchBytes(url) {
@@ -193,7 +193,7 @@ self.onmessage = async ({ data }) => {
             }
           } else {
             const r = await makeXmop(bytes, xma, { path: f.path, pack: packs.indexOf(f.path), rules: config.audio.bitrates,
-                                                   jobs: Math.max(2, cores) });
+                                                   jobs: Math.min(4, cores) });  // a music sound's samples are ~90 MB
             why = r.why;
             if (r.parts) {
               const blob = new Blob(r.parts);
