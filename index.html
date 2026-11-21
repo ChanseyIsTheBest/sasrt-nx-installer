@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>sasrt-nx web installer</title>
+  <meta name="description" content="Builds the Nintendo Switch package of Sonic &amp; All-Stars Racing Transformed from your own copy, in your browser.">
+  <link rel="icon" href="./icon.png">
+  <style>
+    :root { color-scheme: dark; --bg: #07111f; --panel: rgba(12, 28, 52, .86); --inset: rgba(4, 12, 26, .8); --text: #eef6ff;
+      --muted: #a9c0dc; --accent: #ff3d3d; --sky: #3fa9ff; --primary: #2f7de1; --good: #5fd27f; --bad: #ff6b6b;
+      --line: rgba(255, 255, 255, .12); }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; min-height: 100vh; color: var(--text); background: var(--bg);
+      font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    body::before { content: ""; position: fixed; inset: 0; z-index: -1;
+      background: radial-gradient(60% 45% at 85% 10%, rgba(255, 61, 61, .22), transparent 70%),
+                  radial-gradient(70% 55% at 10% 20%, rgba(63, 169, 255, .30), transparent 70%), var(--bg); }
+    main { max-width: 860px; margin: 0 auto; padding: 28px 16px; display: flex; flex-direction: column; gap: 14px; }
+    header { text-align: center; }
+    h1 { font-size: 2.3rem; font-weight: 900; margin: 0 0 12px; }
+    h1 span { color: var(--accent); }
+    .icon { display: block; width: 168px; height: 168px; margin: 0 auto 14px; border-radius: 22px;
+      border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, .55), 0 0 0 4px rgba(63, 169, 255, .18); }
+    .lead { color: var(--muted); margin: 0 auto; max-width: 680px; }
+    .proto { display: inline-block; margin-top: 10px; padding: 2px 10px; border: 1px solid var(--accent); border-radius: 999px;
+      color: var(--accent); font-size: .85rem; font-weight: 700; }
+    section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 20px; }
+    h2 { font-size: 1.1em; margin: 0 0 10px; }
+    button, label.button { display: inline-block; background: #143252; color: #fff; border: 1px solid #285a8a; border-radius: 10px;
+      padding: .5em 1.05em; font: inherit; font-weight: 700; cursor: pointer; }
+    button.primary:not(:disabled) { background: var(--primary); border-color: #5d9cf0; }
+    button:disabled { background: #0d1d31; border-color: #0d1d31; color: #5b7290; cursor: default; }
+    input[type=file] { position: absolute; opacity: 0; width: 1px; height: 1px; }
+    .chosen { color: var(--muted); margin-top: 8px; }
+    .detected { margin-top: 12px; background: var(--inset); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px;
+      word-break: break-word; }
+    .detected.good { border-color: var(--good); color: var(--good); }
+    .detected.bad { border-color: var(--bad); color: var(--bad); }
+    progress { width: 100%; height: 12px; margin-top: 12px; accent-color: var(--sky); }
+    #log { font: 13px/1.45 ui-monospace, monospace; color: var(--muted); white-space: pre-wrap; max-height: 12em; overflow: auto;
+      margin-top: 8px; }
+    .error { color: var(--bad); }
+    ol { margin: 0; padding-left: 20px; }
+    code { overflow-wrap: anywhere; background: rgba(0, 0, 0, .45); border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; }
+    .note { color: var(--muted); font-size: .92rem; margin: 10px 0 0; }
+    .option { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 12px; color: var(--muted); }
+    .option input { margin-top: 5px; }
+    footer { text-align: center; color: var(--muted); font-size: .85rem; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>sasrt-nx <span>web installer</span></h1>
+    <img class="icon" src="./icon.png" alt="Sonic &amp; All-Stars Racing Transformed" width="168" height="168">
+    <p class="lead">Builds the <strong>Nintendo Switch</strong> package of <strong>Sonic &amp; All-Stars Racing Transformed</strong> from your own copy.
+      Everything runs in <strong>this browser</strong>: nothing is uploaded.</p>
+    <span class="proto">version 0.1.0 (test)</span>
+  </header>
+
+  <section>
+    <h2>1. Choose your game</h2>
+    <label class="button" for="folder">Choose the game folder</label>
+    <input id="folder" type="file" webkitdirectory>
+    <p class="note">The folder your copy of Sonic &amp; All-Stars Racing Transformed was extracted to (with
+      <code>default.xex</code> and <code>Data/</code>: <code>GameAssets.M00</code>, <code>Frontend.M00</code>,
+      <code>Movies/</code>, <code>sound/</code>).</p>
+    <div class="chosen" id="chosen">Nothing chosen yet.</div>
+    <div class="detected" id="detected" hidden></div>
+  </section>
+
+  <section>
+    <h2>2. Add the DLC (optional)</h2>
+    <label class="button" for="dlc">Choose packages</label>
+    <label class="button" for="dlc-folder">Choose a folder of packages</label>
+    <input id="dlc" type="file" multiple>
+    <input id="dlc-folder" type="file" webkitdirectory>
+    <p class="note">The game's downloadable content, as the Xbox 360 packages you have (<code>LIVE</code>, <code>PIRS</code>
+      or <code>CON</code> files), or a folder of them. They go to <code>switch/sasrt-nx/dlc/</code> as they are.</p>
+    <div class="chosen" id="dlc-chosen">None.</div>
+    <div class="detected" id="dlc-detected" hidden></div>
+  </section>
+
+  <section>
+    <h2>3. Create the package</h2>
+    <!-- sasrt-nx-installer (2026-11-21, as culdcept-nx-installer and rr6-nx-installer): the audio's Opus and the movies'
+         H.265 re-encodes -->
+    <label class="option"><input id="audio" type="checkbox" checked>
+      <span>Re-encode the music, voices and sounds to Opus (recommended: the seven Wwise packages, 718 MB, become about
+        AUDIO_AFTER; music 128 kbit/s, voices 64 kbit/s). Needs a browser with an Opus encoder (Chrome, Edge or Firefox);
+        without one, or unticked, the sounds are copied as they are.</span></label>
+    <label class="option"><input id="movies" type="checkbox" checked>
+      <span>Re-encode the movies to H.265 (recommended: the four movies, 619 MB, become about MOVIES_AFTER, and the
+        Switch's video hardware plays them). Needs a browser with an H.265 encoder (Chrome or Edge on a recent graphics
+        card); without one, or unticked, the movies are copied as they are.</span></label>
+    <button id="create" class="primary" disabled>Create sasrt-nx.zip</button>
+    <p class="note">The game's archives (<code>GameAssets.M00</code>, <code>Frontend.M00</code>, <code>GameData.M00</code>)
+      are packed with LZ4 (level 9, 256 KB blocks) on all of this computer's cores, and the re-encoded movies (and the sound
+      packages where it helps) with ZXC (level 7, 512 KB blocks): PACK_SAVED smaller on the SD card, read as they were by
+      the game. The zip downloads while it is written (about ZIP_SIZE).</p>
+    <progress id="bar" max="1" value="0" hidden></progress>
+    <div id="log" role="log" aria-live="polite"></div>
+  </section>
+
+  <section>
+    <h2>4. Copy it to the Switch</h2>
+    <ol>
+      <li>If you have an older sasrt-nx, delete its <code>switch/sasrt-nx/game_root</code> folder first: an unpacked file
+        left there is used instead of the packed or re-encoded one, and saves nothing.</li>
+      <li>Extract <code>sasrt-nx.zip</code> to the root of the SD card: it makes <code>switch/sasrt-nx/</code>. The card
+        must be exFAT, or FAT32 with every file under 4 GB (the packed files are).</li>
+      <li>Start the game with a forwarder that has full memory (or a title takeover: hold R while starting a game, then
+        open the Homebrew Menu). Not from the Album.</li>
+    </ol>
+  </section>
+
+  <footer>
+    <p>sasrt-nx. Made from rr6-nx-installer and culdcept-nx-installer (from kameo-nx-installer and renut-nx-webinstaller,
+      GPL-3.0); FFmpeg's MPEG-1 and XMA (xmaframes) decoders (LGPL-2.1-or-later); LZ4 by Yann Collet (BSD 2-Clause), ZXC
+      by Bertrand Lebonnois (BSD 3-Clause). See NOTICES.md. Sonic &amp; All-Stars Racing Transformed is a trademark of SEGA;
+      not affiliated with or endorsed by SEGA, Sumo Digital, Microsoft or Nintendo.</p>
+  </footer>
+</main>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

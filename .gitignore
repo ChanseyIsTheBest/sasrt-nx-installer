@@ -1,0 +1,14 @@
+# rr6-nx-installer (from renut-nx-webinstaller): local tooling and caches (game data never belongs here)
+.claude/
+__pycache__/
+*.log
+node_modules/
+# build folders and test outputs (packed game archives stay local)
+wasm/src/*/build/
+test/out_*
+*.lz4b
+
+# sasrt-nx-installer: XMA/Opus test outputs
+*.xmop
+*.opus
+*.ref.wav

@@ -1,0 +1,73 @@
+{
+  "title": "Sonic & All-Stars Racing Transformed",
+  "package": "sasrt-nx",
+  "nro": "sasrt.nro",
+  "lz4": [
+    "Data/(GameAssets|Frontend|GameData)\\.M00"
+  ],
+  "zxc": [
+    "AvatarAssetPack",
+    "nxeart"
+  ],
+  "asis": [
+    "default\\.xex",
+    "Data/.*\\.toc"
+  ],
+  "movies": {
+    "match": "Data/Movies/.*\\.usm",
+    "fraction": 0.35,
+    "gop": 120,
+    "zxc": true
+  },
+  "audio": {
+    "match": "Data/sound/.*\\.pck",
+    "zxc_min_saving": 0.05,
+    "bitrates": [
+      {
+        "match": "Data/sound/StreamsMulti\\.pck",
+        "rate": 48000,
+        "stereo": 128000,
+        "mono": 64000
+      },
+      {
+        "match": "Data/sound/Streams(Eng|Fra|Ger|Ita|Spa)\\.pck",
+        "stereo": 64000,
+        "mono": 32000
+      },
+      {
+        "match": ".*",
+        "rate": 24000,
+        "stereo": 48000,
+        "mono": 32000
+      },
+      {
+        "match": "Data/sound/SoundBanks\\.pck",
+        "stereo": 96000,
+        "mono": 64000
+      },
+      {
+        "match": ".*",
+        "stereo": 64000,
+        "mono": 32000
+      }
+    ]
+  },
+  "skip": [
+    "\\$SystemUpdate/.*"
+  ],
+  "needs": [
+    "default\\.xex",
+    "Data/GameAssets\\.M00",
+    "Data/GameAssets\\.toc",
+    "Data/Frontend\\.M00",
+    "Data/Frontend\\.toc",
+    "Data/GameData\\.M00",
+    "Data/GameData\\.toc",
+    "Data/sound/SoundBanks\\.pck",
+    "Data/sound/StreamsMulti\\.pck"
+  ],
+  "texts": {
+    "game": "The folder your copy of Sonic &amp; All-Stars Racing Transformed was extracted to (with <code>default.xex</code> and <code>Data/</code>).",
+    "footer": "Sonic &amp; All-Stars Racing Transformed is a trademark of SEGA. Not affiliated with or endorsed by SEGA, Sumo Digital, Microsoft or Nintendo."
+  }
+}
