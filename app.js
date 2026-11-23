@@ -1,26 +1,46 @@
-// sasrt-nx-installer (2026-11-21): rr6-nx-installer's page (credit rr6-nx) for SASRT. The player chooses the folder the
-// game was extracted to, and the DLC packages if they have them; worker.js makes the Switch package from them (the
-// archives packed as LZ4 blocks, lib/lz4b.js; the movies as H.265, lib/usmh.js; the sound packages as Opus,
-// lib/audio.js) and sw.js serves it as a download. game.json names the files the game needs.
-// rr6-nx-installer: from kameo-nx-installer's app.js (bejeweled3-nx-installer's, ChanseyIsTheBest; nfsmw-nx-installer's
-// download flow, StevensND; GPL-3.0).
+// renut_nx_ultimate_installer: the page. The player chooses their disc image (lib/xiso.js) or the folder the game was
+// extracted to, and the DLC packages if the port takes them; worker.js makes the Switch package from them (the shaders,
+// the LZ4-packed files: lib/install.js) and sw.js serves it as a download. Everything game-specific comes from
+// game.json and release/manifest.json.
+// From rr6-nx-installer's and kameo-nx-installer's app.js (bejeweled3-nx-installer's, ChanseyIsTheBest;
+// nfsmw-nx-installer's download flow, StevensND; GPL-3.0).
+import { listXiso } from './lib/xiso.js';
+import { findGod, godFromFiles } from './lib/god.js';  // sasrt-nx-installer: Games on Demand
+import { checkGameFiles, describeProblems, optionalPaths } from './lib/game_check.js';
+import { checkUpdate, updateFromPackage } from './lib/update.js';
 
-const folderInput = document.getElementById('folder');
-const chosen = document.getElementById('chosen');
-const detected = document.getElementById('detected');
-const dlcInput = document.getElementById('dlc');
-const dlcFolderInput = document.getElementById('dlc-folder');
-const dlcChosen = document.getElementById('dlc-chosen');
-const dlcDetected = document.getElementById('dlc-detected');
-const create = document.getElementById('create');
-const bar = document.getElementById('bar');
-const logBox = document.getElementById('log');
-const manifest = fetch('./release/manifest.json').then((r) => r.json());
-const config = fetch('./game.json').then((r) => r.json());
+const $ = (id) => document.getElementById(id);
+const folderInput = $('folder'), isoInput = $('iso'), chosen = $('chosen'), detected = $('detected');
+const dlcInput = $('dlc'), dlcFolderInput = $('dlc-folder'), dlcChosen = $('dlc-chosen'), dlcDetected = $('dlc-detected');
+const updateInput = $('update'), updateFolderInput = $('update-folder'), updateChosen = $('update-chosen');
+const updateDetected = $('update-detected');
+const create = $('create'), compileBox = $('compile'), moviesBox = $('movies'), bar = $('bar'), logBox = $('log');
+const audioBox = $('audio');  // blur-nx-installer 1.0.1 (2026-11-22): the streamed music as Opus
+const manifest = fetch('./release/manifest.json', { cache: 'no-cache' }).then((r) => r.json());
+const game = fetch('./game.json', { cache: 'no-cache' }).then((r) => r.json());
 let entries = null;
 let dlc = [];  // [{ path (under dlc/), size, file }]
+let update = null;  // blur-nx (2026-11-18): the title update when game.json names one: [{ path (in the update), size, file }]
 let busy = false;
 let downloadFrame = null;
+
+// the texts of game.json (trusted: the port's own file, as the page's HTML is)
+game.then((g) => {
+  document.title = `${g.package} web installer`;
+  for (const el of document.querySelectorAll('[data-game]')) el.textContent = g[el.dataset.game];
+  for (const el of document.querySelectorAll('[data-text]')) el.innerHTML = g.texts?.[el.dataset.text] || '';
+  if ($('dlc-step')) $('dlc-step').hidden = !g.dlc;  // blur-nx-installer: the page has no DLC step (Blur takes none)
+  $('update-step').hidden = !g.update;
+  for (const el of document.querySelectorAll('[data-update]')) el.textContent = g.update?.[el.dataset.update] || '';
+  // the steps' numbers, over the ones this game shows
+  let n = 0;
+  for (const el of document.querySelectorAll('section:not([hidden]) h2 .n')) el.textContent = `${++n}. `;
+  $('compile-row').hidden = !g.shaders;
+  $('movies-row').hidden = !g.movies;  // blur-nx-installer 1.0.1: the movies' H.265 re-encode
+  $('audio-row').hidden = !g.audio;  // and the streamed music's Opus
+  create.textContent = `Create ${g.package}.zip`;
+  manifest.then((m) => { $('version').textContent = `version ${m.version}`; });
+});
 
 function log(text, error = false) {
   const line = document.createElement('div');
@@ -45,44 +65,56 @@ function show(state, text, box = detected) {
   box.textContent = text;
 }
 
+let needsUpdate = false;
+game.then((g) => { needsUpdate = !!g.update; updateCreate(); });
+
 function updateCreate() {
-  create.disabled = busy || !entries;
+  create.disabled = busy || !entries || (needsUpdate && !update);
 }
 
 // list: [{ path (in the game), size, file, offset (in a disc image) }]
 async function choose(list, what) {
   entries = null;
   updateCreate();
+  const g = await game;
   const total = list.reduce((n, e) => n + e.size, 0);
   chosen.textContent = `${what}: ${list.length} files, ${formatSize(total)}`;
   const xex = list.find((e) => e.path.toLowerCase() === 'default.xex');
   if (!xex) {
-    show('bad', 'No default.xex: choose the folder the game was extracted to.');
+    show('bad', 'No default.xex: choose the folder the game disc was extracted to, or the disc image.');
     return;
   }
   show('', 'Checking default.xex...');
-  const blob = xex.offset === undefined ? xex.file : xex.file.slice(xex.offset, xex.offset + xex.size);
+  // sasrt-nx-installer: a Games on Demand entry reads through its package (lib/god.js)
+  const blob = xex.god ? new Blob([await (await godFromFiles(xex.god)).read(xex.offset, xex.size)])
+    : xex.offset === undefined ? xex.file : xex.file.slice(xex.offset, xex.offset + xex.size);
   const hash = await sha256(blob);
   const build = (await manifest).builds.find((b) => b.xex_sha256 === hash);
   if (!build) {
     show('bad', `This default.xex is not one this release supports. Its SHA-256: ${hash}`);
     return;
   }
-  // game.json's `needs`: a RegExp source each, of paths in the game folder
-  const missing = (await config).needs.filter((m) => !list.some((e) => new RegExp(`^(?:${m})$`, 'i').test(e.path)));
-  if (missing.length) {
-    show('bad', `${missing.map((m) => m.replace(/\\/g, '')).join(', ')} ${missing.length === 1 ? 'is' : 'are'} missing: ` +
-                'choose the whole extracted game.');
+  // 2026-11-18: every file of the copy the release was made from (the build's "game_files"), with its size: a copy with
+  // default.xex and little else (or a file cut short) is refused here, with what is missing named (lib/game_check.js).
+  const problems = describeProblems(checkGameFiles(list, build.game_files, optionalPaths(g)));
+  if (problems) {
+    show('bad', problems);
     return;
   }
-  show('good', `Sonic & All-Stars Racing Transformed (${build.edition}), supported.`);
+  const missing = (g.needs || []).filter((p) => !list.some((e) => new RegExp(`^(?:${p})$`, 'i').test(e.path)));
+  if (missing.length) {
+    show('bad', `Files are missing (${missing.map((p) => p.replace(/\\/g, '')).join(', ')}): choose the whole extracted game.`);
+    return;
+  }
+  show('good', `${g.title} (${build.edition}), supported.`);
   entries = list;
   updateCreate();
 }
 
-// The DLC: Xbox 360 packages ("LIVE", "PIRS" or "CON "), copied whole to switch/sasrt-nx/dlc/.
+// The DLC: Xbox 360 packages ("LIVE", "PIRS" or "CON "), copied whole to switch/<package>/dlc/; the game installs them.
 async function chooseDlc(list) {
   dlc = [];
+  const g = await game;
   if (!list.length) {
     dlcChosen.textContent = 'None.';
     dlcDetected.hidden = true;
@@ -102,17 +134,102 @@ async function chooseDlc(list) {
     show('bad', 'None of these is an Xbox 360 package.', dlcDetected);
     return;
   }
-  show('good', `${kept.length} DLC package${kept.length === 1 ? '' : 's'} will go to switch/sasrt-nx/dlc/.`, dlcDetected);
+  show('good', `${kept.length} DLC package${kept.length === 1 ? '' : 's'} will go to switch/${g.package}/dlc/.`, dlcDetected);
   dlc = kept;
 }
 
-dlcInput.addEventListener('change', async (event) => {
+// blur-nx (2026-11-18): the title update (game.json "update"), as the Xbox 360 package the player has (lib/stfs.js reads
+// it here) or the folder it was extracted to; checked against the release's (lib/update.js). Its default.xexp goes to
+// game_root/, its other files to update/.
+const readerOf = (file) => async (offset, length) => new Uint8Array(await file.slice(offset, offset + length).arrayBuffer());
+const readable = (list) => list.map((e) => ({ ...e, read: readerOf(e.file) }));
+
+// The files of a package, as Blobs the worker can take; null when the file is not an Xbox 360 package.
+async function packageFiles(file) {
+  const pkg = await updateFromPackage(readerOf(file), file.size);
+  if (!pkg) return null;
+  const out = [];
+  for (const f of pkg.files) out.push({ path: f.path, size: f.size, file: new Blob([await f.read(0, f.size)]) });
+  return out;
+}
+
+async function chooseUpdate(list, what) {
+  update = null;
+  updateCreate();
+  const g = await game;
+  const title = g.update?.title || 'the title update';
+  const total = list.reduce((n, e) => n + e.size, 0);
+  updateChosen.textContent = `${what}: ${list.length} file${list.length === 1 ? '' : 's'}, ${formatSize(total)}`;
+  show('', 'Checking the update...', updateDetected);
+  let problem = 'This release takes no title update.';
+  for (const b of (await manifest).builds.filter((x) => x.update)) {
+    problem = await checkUpdate(b, readable(list), title);
+    if (!problem) break;
+  }
+  if (problem) {
+    show('bad', problem, updateDetected);
+    return;
+  }
+  show('good', `${title[0].toUpperCase()}${title.slice(1)}, supported: its default.xexp goes to switch/${g.package}/game_root/, ` +
+       `its other files to switch/${g.package}/update/.`, updateDetected);
+  update = list;
+  updateCreate();
+}
+
+updateInput.addEventListener('change', async (event) => {
+  const [file] = event.target.files;
+  event.target.value = '';
+  if (!file) return;
+  try {
+    const files = await packageFiles(file);
+    if (!files) {
+      updateChosen.textContent = file.name;
+      show('bad', `${file.name} is not an Xbox 360 package: choose the update's own file (a LIVE package, named like TU_...).`,
+           updateDetected);
+      return;
+    }
+    await chooseUpdate(files, file.name);
+  } catch (error) {
+    show('bad', `${file.name}: ${error.message}`, updateDetected);
+  }
+});
+
+updateFolderInput.addEventListener('change', async (event) => {
+  const files = [...event.target.files];
+  event.target.value = '';
+  if (!files.length) return;
+  const top = files[0].webkitRelativePath.split('/')[0];
+  try {
+    // an extracted update: its files from the folder that holds default.xexp (the chosen one or one inside it)
+    const xexp = files.find((f) => /(^|\/)default\.xexp$/i.test(f.webkitRelativePath));
+    if (xexp) {
+      const base = xexp.webkitRelativePath.slice(0, -'default.xexp'.length);
+      const inside = files.filter((f) => f.webkitRelativePath.startsWith(base));
+      await chooseUpdate(inside.map((file) => ({ path: file.webkitRelativePath.slice(base.length), size: file.size, file })), top);
+      return;
+    }
+    // a folder with the package in it (as the console keeps it): the first package of the folder that is the update
+    for (const f of files.filter((x) => x.size >= 0x1000).slice(0, 64)) {
+      const inside = await packageFiles(f);
+      if (inside && inside.some((x) => x.path.toLowerCase() === 'default.xexp')) {
+        await chooseUpdate(inside, `${top}: ${f.name}`);
+        return;
+      }
+    }
+    updateChosen.textContent = `${top}: ${files.length} files`;
+    show('bad', 'No default.xexp and no update package in this folder.', updateDetected);
+  } catch (error) {
+    show('bad', `${top}: ${error.message}`, updateDetected);
+  }
+});
+
+dlcInput?.addEventListener('change', async (event) => {
   const files = [...event.target.files];
   event.target.value = '';
   await chooseDlc(files.map((file) => ({ path: file.name, size: file.size, file })));
 });
 
-dlcFolderInput.addEventListener('change', async (event) => {
+dlcFolderInput?.addEventListener('change', async (event) => {
   const files = [...event.target.files];
   event.target.value = '';
   // the paths inside the chosen folder (its own name dropped): the game walks into subfolders of dlc/
@@ -124,8 +241,46 @@ folderInput.addEventListener('change', async (event) => {
   event.target.value = '';
   if (!files.length) return;
   // the paths inside the chosen folder (its own name dropped)
-  await choose(files.map((file) => ({ path: file.webkitRelativePath.split('/').slice(1).join('/'), size: file.size, file })),
-               files[0].webkitRelativePath.split('/')[0]);
+  const list = files.map((file) => ({ path: file.webkitRelativePath.split('/').slice(1).join('/'), size: file.size, file }));
+  // sasrt-nx-installer (2026-11-22): a Games on Demand package's folder (an STFS header beside its .data folder): its
+  // disc's files, read through the package (lib/god.js) as a disc image's are (lib/xiso.js)
+  if (!list.some((e) => e.path.toLowerCase() === 'default.xex')) {
+    const god = await findGod(list);
+    if (god) {
+      try {
+        const g = await godFromFiles(god);
+        const inside = await listXiso((o, n) => g.read(o, n), g.size);
+        if (!inside) throw new Error('no game in the package');
+        await choose(inside.map((f) => ({ path: f.path, size: f.size, offset: f.offset, god })),
+                     `${g.name || files[0].webkitRelativePath.split('/')[0]} (${g.kind})`);
+      } catch (error) {
+        entries = null;
+        updateCreate();
+        show('bad', `The Games on Demand package could not be read: ${error.message}`);
+      }
+      return;
+    }
+  }
+  await choose(list, files[0].webkitRelativePath.split('/')[0]);
+});
+
+isoInput.addEventListener('change', async (event) => {
+  const [file] = event.target.files;
+  event.target.value = '';
+  if (!file) return;
+  const read = async (offset, length) => new Uint8Array(await file.slice(offset, offset + length).arrayBuffer());
+  try {
+    const files = await listXiso(read, file.size);
+    if (!files) {
+      entries = null;
+      updateCreate();
+      show('bad', `${file.name} is not an Xbox 360 disc image.`);
+      return;
+    }
+    await choose(files.map((f) => ({ path: f.path, size: f.size, file, offset: f.offset })), file.name);
+  } catch (error) {
+    show('bad', error.message);
+  }
 });
 
 // The zip is served by sw.js as a normal browser download, streamed while it is being made.
@@ -144,7 +299,7 @@ const helper = downloadHelper();
 helper.catch(() => {});
 
 create.addEventListener('click', async () => {
-  if (!entries || busy) return;
+  if (!entries || busy || (needsUpdate && !update)) return;
   let controller;
   try {
     controller = await helper;
@@ -152,6 +307,7 @@ create.addEventListener('click', async () => {
     log(`Error: ${error.message}`, true);
     return;
   }
+  const zipName = `${(await game).package}.zip`;
   busy = true;
   create.disabled = true;
   bar.hidden = false;
@@ -175,18 +331,18 @@ create.addEventListener('click', async () => {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const ack = new MessageChannel();
       const registered = new Promise((resolve) => (ack.port1.onmessage = resolve));
-      controller.postMessage({ type: 'download', id, filename: 'sasrt-nx.zip', size: null }, [channel.port2, ack.port2]);
+      controller.postMessage({ type: 'download', id, filename: zipName, size: null }, [channel.port2, ack.port2]);
       await registered;
       // a hidden frame opens the download: its request is a navigation, which always reaches the service worker
       downloadFrame?.remove();
       downloadFrame = document.createElement('iframe');
       downloadFrame.hidden = true;
-      downloadFrame.src = `./download/${id}/sasrt-nx.zip`;
+      downloadFrame.src = `./download/${id}/${zipName}`;
       document.body.appendChild(downloadFrame);
-      log(`Download started: sasrt-nx.zip, about ${formatSize(data.estimate)}. Keep this page open until it finishes.`);
+      log(`Download started: ${zipName}, about ${formatSize(data.estimate)}. Keep this page open until it finishes.`);
     } else if (data.type === 'done') {
       bar.value = 1;
-      log(`Finished in ${data.seconds} s: sasrt-nx.zip is ${formatSize(data.size)}.`);
+      log(`Finished in ${data.seconds} s: ${zipName} is ${formatSize(data.size)}.`);
       finish();
     } else if (data.type === 'error') {
       log(`Error: ${data.message}`, true);
@@ -197,7 +353,8 @@ create.addEventListener('click', async () => {
     log(`Error: ${event.message}`, true);
     finish();
   };
-  // the sound packages as Opus and the movies as H.265 (the options under step 3)
-  const options = { audio: document.getElementById('audio').checked, movies: document.getElementById('movies').checked };
-  worker.postMessage({ entries, dlc, options, port: channel.port1 }, [channel.port1]);
+  worker.postMessage({ entries, dlc, update: update || [], compile: compileBox.checked,
+                       options: { movies: moviesBox.checked && !$('movies-row').hidden,
+                                  audio: audioBox.checked && !$('audio-row').hidden }, port: channel.port1 },
+                     [channel.port1]);
 });

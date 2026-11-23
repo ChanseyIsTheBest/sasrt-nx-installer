@@ -1,0 +1,2 @@
+# sasrt-nx: none (banjo-nx lists its own fur / lit shaders here; the passes that read this list are A/B or diagnostic,
+# off by default). Shader hashes, one a line.

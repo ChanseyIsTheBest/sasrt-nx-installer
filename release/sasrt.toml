@@ -1,0 +1,447 @@
+# sasrt-nx release (tools/release_toml.py): every log and diagnostic off but the crash reports (logs/rex/rex_crash.log).
+# Settings read at startup on the Nintendo Switch (ReXGlue cvars): sdmc:/switch/sasrt-nx/sasrt.toml next to
+# sasrt.nro. tools/win/package_switch.ps1 puts this file there as sasrt.toml.
+
+log_level = "off"
+
+# The native deko3d renderer draws the game (Renut's Direct3D-level renderer on deko3d: no PM4 ring, no EDRAM
+# emulation; docs/deko3d-renderer.md); it needs deko3d_shaders.bin next to the NRO. Since 2026-10-20 the NRO links no
+# Vulkan driver (the user's request), so the NVK renderer below (masseffect_renderer_native) and the emulated Xenos GPU
+# cannot start on the console: keep these two keys.
+sasrt_renderer = "renut"
+renut_gpu_backend = "deko3d"
+# The converted vertex stream / index range cache (banjo-nx's console memory policy: 128 MB). 2026-10-21: the console's
+# race kept 128 MB full, so the geometry ahead was converted on every draw (the render thread's main cost, 96-122 ms a
+# frame); a race needs about 155-250 MB (PC with this policy: 256 MB never filled in a race, render thread 5-6 ms a
+# frame against 11-17 at 128 MB). The upload rings shrink by more than this grows. 128 again:
+# configs/sasrt_renut_stream_cache_128.toml.
+banjo_renut_stream_cache_mb = 256
+# The game waits at its Swap until Renut's render thread has done the frame (2026-10-21, the user's console run with
+# sasrt_renut_diag_no_frames_ahead): 30 fps in the race instead of 16-18, the render thread 16-22 ms a frame instead
+# of 38-44, input to screen 24 ms instead of 78, and most of the skinned meshes' explosions gone (the late reads, and
+# the work they made, went). 1: the game one frame ahead, as before (configs/sasrt_renut_frames_ahead_1.toml).
+sasrt_renut_frames_ahead = 0
+# Depth targets keep the GPU's hardware compression and are decompressed before they are read (2026-10-21; deko3d's
+# rule for sampling a compressed depth image, about 10 a frame; it was not the race's black ground, which was the GI
+# below). Off: configs/sasrt_deko3d_depth_resolve_off.toml; compression off altogether:
+# configs/sasrt_renut_depth_uncompressed.toml.
+sasrt_deko3d_depth_resolve = true
+# plume's deko3d defaults put right (2026-10-30, docs/enhancements.md): multisampled targets get the standard sample
+# positions (deko3d put every sample at the pixel's centre: no edge antialiasing), no alpha-to-coverage dither grid,
+# and indexed strips restart at the all-ones index as on Vulkan. The old behaviour: configs/sasrt_deko3d_*.toml.
+banjo_deko3d_msaa_positions = true
+banjo_deko3d_a2c_dither = false
+banjo_deko3d_strip_restart = true
+# The race's average scene luminance written back to guest memory, where the tone mapper's CPU code reads it
+# (2026-10-30, docs/enhancements.md): without it every glow (Ristar at the race start) is 20x too dark.
+sasrt_renut_resolve_readback = true
+# An indexed strip's restart markers kept out of the vertex range and rewritten to the host marker (2026-11-03,
+# rr6-nx's finding, docs/enhancements.md): without it a strip with a cut ran on through it on deko3d, with a
+# triangle to the origin, whenever no whole-buffer copy of its indices existed. Off: configs/sasrt_strip_markers_off.toml.
+rr6_strip_markers = true
+# A resolve destination whose header moved to the other of the two buffers the game keeps behind it stays the same
+# host texture (2026-11-03, docs/enhancements.md): the scene depth, the lit scene and the downsample chain were
+# retired and made again every frame, the only thing new each frame in the shading pass whose mask flickers.
+# Off: configs/sasrt_renut_resolve_target_pages_off.toml.
+sasrt_renut_resolve_target_pages = true
+# The far-cascade shadow flicker's cause as found 2026-11-04 (docs/enhancements.md): a composed command buffer's splice
+# took a recorded buffer as it was at that moment, the previous frame's recording when the worker's shadow pass had not
+# begun this frame's, so the shadow atlas was a frame behind the mask pass's matrices and the ground shadowed itself in
+# patches. On: a splice takes a recording only once ended (at its EndCommandBuffer, or at the submission failing that).
+# Off: configs/sasrt_splice_ended_off.toml.
+sasrt_renut_splice_ended = true
+# deko3d: a texture leaving a copy layout (an upload, a copy) moves with a full barrier, the only one that waits for
+# the copy engine (docs/enhancements.md, 2026-11-04). Off: configs/sasrt_deko3d_copy_wait_off.toml.
+sasrt_deko3d_copy_wait = true
+# The far-cascade shadow flicker's cause, found 2026-11-08 (docs/enhancements.md, sasrt_renut_scene_same_frame): each
+# frame's scene pass (the worker's recording) was drawn a frame after it was recorded, under the next frame's shadows,
+# whose camera is a frame newer: the shadows swam while turning, and a camera cut put the whole ground in shadow or none
+# for a frame. On: a submission replays the scene the worker records right after it (the same frame's).
+# Off: configs/sasrt_scene_same_frame_off.toml.
+sasrt_renut_scene_same_frame = true
+# The far-cascade shadow flicker's console A/Bs (2026-10-30, docs/enhancements.md; configs
+# sasrt_renut_depth_resolve_wait_*.toml): what follows each depth resolve. 2 (a full drain) did not end it. 0: none.
+sasrt_renut_depth_resolve_wait = 0
+# The flicker's other console A/Bs (2026-10-30, off; configs sasrt_deko3d_*_wait.toml): a wait for idle instead of
+# deko3d's fragment barrier for textures moving to a read or a write layout, and before each clear.
+sasrt_deko3d_read_wait = false
+sasrt_deko3d_write_wait = false
+sasrt_deko3d_clear_wait = false
+# The shadow dump on A+B+X+Y (2026-10-30, the user's request; docs/enhancements.md): press the four together in a race
+# and the next 8 frames' shadow mask, lit scene and scene depth go to shadow_dump/ next to the NRO (7.5 MB a frame,
+# written in the background). Every press is a window of its own.
+sasrt_renut_diag_shadow_dump = ""
+sasrt_renut_diag_shadow_dump_buttons = false
+# The race's GI volumes read as integers, as the hardware reads them (2026-10-21: the shadows were black on every
+# renderer, the GI adding nothing). Off: configs/sasrt_renut_gi_normalized.toml.
+sasrt_renut_texture_int_format = true
+
+# The native Vulkan renderer (NVK) drew the game before 2026-10-20 (sasrt_shaders.mesp and sasrt_shaders.mesp.idx next
+# to the NRO); it needs an NRO built with REXGLUE_SWITCH_LINK_NVK on (sdk/cmake/rexglue_switch.cmake) and
+# sasrt_renderer = "xenos".
+masseffect_renderer_native = true
+
+# Every shader the package lacks is written once to shader_misses/ next to the NRO (discovery/, missing/, variants/):
+# send that folder back and it goes into the next shader package. Nothing is written when the package has them all.
+sasrt_shader_misses = "shader_misses"
+
+# The asset cache: game data from game_root.nxpack + game_root.nxidx when they are there (package_switch.ps1 -Pack).
+# This game's data is 22 files in a game_root folder, so the pack saves little, and at 4.7 GB it does not fit a FAT32
+# card (4 GiB per file): the console does not build it on its own.
+asset_pack = true
+asset_pack_build = false
+
+# The profiler, on in this file and in every premade config (2026-10-06, the user's choice: every test run brings its
+# profile; 2026-10-21: verify too). Plain keys: the enhancement masters do not touch them.
+#   - CPU: every busy thread's pc sampled every 1 ms into logs/rex/rex_profile_NNN.log, one per session, NNN the
+#     number of its sasrt_NNN.log (tools/switch_hot_functions.py);
+#   - GPU: a timestamp at every pass-category change, the "GPU per Swap" lines (time per category and the idle gap).
+# It costs some speed, the same in every config, so A/B runs still compare fairly; the image does not change.
+switch_profile_stacks = false
+masseffect_gpu_marks_categories = false
+#   - Renut's GPU: every 10 s a "GPU profile" line, the GPU's time per frame by kind of work (draws per target,
+#     resolves, mip levels, present).
+renut_gpu_profile = 0.0
+# The diagnostics a test run brings (logging only; off by default since 1.0.0, 2026-11-23, the user: "make sure release
+# build has no profiling"; tools/release_toml.py turns every one of them off for the release):
+#   the libnx call counts of the 10 s report, the memory report every 30 s, the slow-frame and flash watches, the
+#   GPU census, the first use of each format, the "[enh] uses" line every 10 s.
+switch_perf_count_calls = false
+renut_memory_report = 0.0
+sasrt_renut_diag_slow_frames = false
+sasrt_renut_diag_flash_watch = false
+renut_diag_gpu_census = false
+renut_diag_formats = false
+sasrt_enhancements_report_s = 0
+
+# Four-core mode (2026-11-09, the user: "move the XMA decoder and Model Instance to core 3; leave the shader compiles on
+# cores 0-2"; banjo-nx's, from NetherSX2_nx; docs/four-core-mode.md). Needs the forwarder's NPDM granting CPU 0-3:
+# with sasrt_forwarder_program_id set, SASRT writes sdmc:/atmosphere/contents/<id>/exefs/main.npdm at start (Atmosphere
+# replaces the forwarder's own with it), and the launch after that has four cores. With three cores nothing changes.
+sasrt_system_core = 1
+sasrt_system_core_threads = "XMA Decoder"  # 2026-11-09: Model Instance there cost 2 fps (run P2: the render and game threads wait for its recording); the Wwise threads and the Audio Worker there gave long silences (run P5, the user heard them). Run P6 tries "XMA Decoder,SlParticle,XThread"
+sasrt_forwarder_program_id = "05B2275AF7F68000"  # the user's forwarder of sdmc:/switch/sasrt-nx/sasrt.nro (the user OKed writing its NPDM, 2026-11-09)
+banjo_system_core_uam = false              # the shader compiles stay on cores 0-2 (the user's choice)
+banjo_system_core_compiles = true  # 2026-11-10 (run lat2): the ring cleaner on core 3; since 2026-11-22 the shader compiles float instead (below)
+sasrt_compile_threads_core = 2  # 2026-11-22, the user: "restrict it to core 2" (the shader compiles; -1 floats them on every core)
+
+# Game memory and the NRO's code on 2 MB blocks (2026-11-09, the user; banjo-nx 1.0.2's, from kameo-nx 1.0.1 and the
+# Torchlight port's findings: kameo-nx measured +4.3 % fps). The code copy costs its size again in memory (~70 MB).
+banjo_window_blocks = true
+banjo_code_blocks = true
+
+# Guest thread stacks (2026-11-09, the user: "more memory improvements"; docs/render-thread-round-1109.md). Each guest
+# thread's host stack is a heap block (16 MB as Xenia's: 31 at once in the race, ~500 MB); the profiler's thread lines
+# now give each thread's deepest sampled stack. switch_guest_stack_mb stays 16 until the console's figures say less is
+# safe. At most 8 finished threads' blocks kept for the next threads (64 before: 128 MB at most, not 1 GB), and the
+# memory governor gives the kept ones back while memory is low.
+switch_guest_stack_mb = 4  # run mem12 (docked, 15 min, both races): the deepest stack sampled 55 KB
+switch_thread_stack_pool = 8
+# The I/O range cache (Mass Effect's, up to 64 MB of heap): 0 hits in run mem12's 106 lookups (15 minutes, two races).
+masseffect_io_ranges_mb = 0
+# Load-time memory back sooner (2026-11-09 night, memory round 4; run mem13: the race's load grew the upload rings to
+# 256 MB, kept 30 s, and the prebuild held ~3,000 unused pipelines for 3 minutes): all the same pixels.
+banjo_renut_prebuild_release_s = 60      # prebuilt pipelines no draw took for a minute go back (180 by default)
+banjo_renut_upload_trim_frames = 300     # a heavy frame's upload ring chunks go after 10 s (900: 30 s)
+sasrt_renut_ring_frame_cap_mb = 64       # a frame that used 64 MB of its ring ends there for the renderer (96)
+sasrt_texture_long_idle_frames = 0       # OFF: with 1800 every docked race hung the GPU (mem14, mem15, home_test; 2026-11-10)
+# 2026-11-10, THE GPU HANG (docs/render-thread-round-1109.md): a texture over a depth resolve whose image is of another
+# height of its dynamic-resolution code is made again at its bind (its depth words were copied into it past its end).
+sasrt_texture_scale_size_check = true
+sasrt_cmdbuf_trim_percent = 150          # a recording cut to what it holds + 25 % past 1.5x (run mem17: capacity 120 -> 32-70 MB, the same fps)
+sasrt_cmdbuf_trim_slack_kb = 256
+
+# ---- Enhancements (docs/enhancements.md): every one has its own key; the two masters switch a whole group. ----------
+sasrt_cpu_enhancements = true
+sasrt_noncpu_enhancements = true
+sasrt_cpu_verify = false
+# The localized copies of every function the console profile caught and the five hand-written natives
+# (docs/optimising-functions.md, katamari-nx's method, 2026-11-08). Checked by the guard on the PC (4.8 million calls
+# compared, 0 differences) and in Ryujinx; on the console the direct dispatch, as katamari-nx ships it: no guard and no
+# call counter (banjo_hot_guard_calls = 4000 / banjo_hot_guard_period = 64 is the dense check, sasrt_hot_verify.toml).
+banjo_cpu_native_bulk = true
+banjo_hot_guard_calls = 0
+banjo_hot_guard_period = 0
+sasrt_hand_cookie_check = true
+sasrt_hand_water_table = true
+sasrt_hand_sphere_fit = true
+sasrt_hand_resampler = true
+sasrt_hand_water_step = true
+# The game's Direct3D GPU wait sleeps on the ring thread's progress instead of spinning.
+sasrt_cpu_gpu_wait_sleep = true
+sasrt_gpu_wait_max_us = 1000
+sasrt_handheld_gpu_boost = true
+# The renderer's CPU fast paths that masseffect-nx measured on the console but leaves off in its code; each has its own
+# self-check. Checked on PC in verify mode (0 differences, 2026-10-06).
+masseffect_native_fast_pair = true
+masseffect_native_raw_microcode = true
+masseffect_native_pm4_fast = true
+masseffect_native_flat_identity = true
+masseffect_native_compare_fast = true
+masseffect_native_fast_copy = true
+masseffect_native_indices_cache = true
+masseffect_notify_no_lock = true
+# 2 = the hardware CRC32 pair (sa2-nx's round 6, masseffect_crc_fingerprint.h): the A57's CRC instructions instead of
+# XXH3's NEON loop for the index cache and the sampled fingerprints (same 2^-64 collision odds). Builds without +crc
+# (the PC) use 1.
+masseffect_native_fingerprint_mode = 2
+masseffect_native_dedupe_max_fingerprint = 16384
+# Diagnostics that cost time.
+masseffect_native_diag_reuse = false
+masseffect_native_diag_memory_upload = false
+masseffect_native_precise_marks = false
+# GPU (docs/gpu-optimisation-candidates.md): Direct3D's null-shader draws skipped before the EDRAM sync, and the shadow
+# map's first aliased clear redirected into the 1x view (race EDRAM transfers 3.07 M -> 1.89 M tiles per 10 s on PC).
+sasrt_native_skip_null_draws = true
+sasrt_native_edram4_grid_alias = true
+# Vertex shaders Direct3D patched for a vertex declaration beyond what an exact match allows: fetch destination
+# swizzles (futari-nx's) and fetches moved to each other's slots (sa2-nx's run-time proof). Without them such draws
+# were dropped. configs/sasrt_test_vs_identify_off.toml turns both off.
+sasrt_gpu_vs_swizzle_variants = true
+sasrt_gpu_vs_fetch_reorder = true
+# sa2-nx's GPU rounds, ported 2026-10-13 (docs/enhancements.md, "The GPU round of 2026-10-13"). Same-format RGBA8
+# resolves are drawn on the 3D engine instead of copied on NVK's copy engine (13 of this game's 36 resolves a frame).
+# The other five are shader specializations and need this build's shader package: vertex shaders proven not to read
+# the vertex index keep the shared constant block across draws; pixels a blend would leave unchanged are discarded
+# before it; three per-pipeline facts are no longer tested per vertex or pixel.
+# configs/sasrt_test_gpu_round13_off.toml turns the six off.
+sasrt_gpu_resolve_draw = true
+sasrt_gpu_index_base_held = true
+sasrt_gpu_blend_skip = true
+sasrt_gpu_texcoords_unswapped = true
+sasrt_gpu_no_texture_signs = true
+sasrt_gpu_identity_remap = true
+# Long sessions (sa2-nx's fix for its 1.0.0 reports: after one to two hours shadows glitch, textures turn black,
+# geometry goes missing until a restart). A resolved texture nothing resolved to or read for 3,600 presented frames
+# (two minutes at 30 frames a second) is released, with the crops and depth words derived from it; before, every
+# address ever resolved to kept its image for the whole session. configs/sasrt_test_resolved_retire_off.toml keeps
+# them all, as before.
+sasrt_native_resolved_retire_idle = true
+sasrt_native_resolved_idle_frames = 3600
+# Long sessions, second part (sa2-nx's finding of 2026-10-14: its build with the fix above still broke after three to
+# four hours). The texture cache released textures by texel bytes only; now it also releases its coldest ones when
+# the 4,096 descriptor slots run short or the texture pool has no gap, and its limit counts the memory a texture
+# takes. configs/sasrt_test_texture_slots_off.toml turns it off.
+sasrt_native_texture_slots_evict = true
+# Relaxed vsync (sa2-nx's, in peggle2-nx's form for a game that presents every second vblank) stays off: measured on
+# the PC with a simulated slow frame, this game is not held to the next 1/60 s tick when it misses 30 a second (39 ms
+# of GPU-side work per frame: 26 frames a second with the key on and off alike). Console A/B:
+# configs/sasrt_test_vsync_relaxed_on.toml.
+sasrt_vsync_relaxed = false
+# The pipelines of earlier sessions are recreated at start (pipeline_list next to the NRO), so races do not stutter.
+masseffect_native_pipelines_prewarm = true
+# Deferred recording (a worker thread records the ring's Vulkan commands; masseffect-nx's console: ring thread 62 -> 40 %
+# of a core) stays off: futari-nx's lockstep captures found a menu fade that differs with it (by up to 65 levels on 4
+# frames, differently in each run). Its PC slowdowns were Windows' sleep granularity, fixed. Console A/B:
+# configs/sasrt_test_deferred_on.toml.
+masseffect_native_deferred_recording = false
+masseffect_deferred_native_fast = false
+masseffect_deferred_native_update = false
+# The upload buffer (every draw's vertices and indices) in CPU-cached memory, published before each submit (sa2-nx's
+# console: CPU writes 5,251 MB/s there against 2,506 in the uncached type). 0 = the uncached type, as before.
+masseffect_native_upload_memory = 1
+# The direct renderer (docs/enhancements.md, "The direct renderer"): Direct3D's per-draw state reaches the ring as a host
+# record, the EDRAM preparation of a draw like the previous one is reused, and the constants dedupe reads the uploaded
+# block. Each has its own key; configs/sasrt_test_direct_state_off.toml is the A/B of the first.
+sasrt_cpu_direct_state = true
+sasrt_cpu_ring_edram_memo = true
+sasrt_cpu_ring_compare_uploaded = true
+# The ring's biggest cost in this game: vertex copies. A draw's vertex window inside a larger copy of the same vertex
+# buffer already in this upload buffer reuses it (PC race: about 73 % fewer vertex bytes copied).
+# configs/sasrt_test_vertex_containment_off.toml is the A/B.
+sasrt_cpu_vertex_containment = true
+# A window that overlaps earlier copies of its buffer copies their contiguous union, so later windows reuse it.
+sasrt_cpu_vertex_merge = true
+# The same-range vertex dedupe matches small windows by address too (within a synchronization epoch, its own rule):
+# no hash of every small window. configs/sasrt_test_vertex_no_fingerprint_off.toml is the A/B, and
+# configs/sasrt_test_ring_round_off.toml turns off the whole round (the five keys above and this one).
+sasrt_cpu_vertex_no_fingerprint = true
+# The direct renderer, step 2 (sa2-nx's): inside a converted draw, Direct3D's three state flush functions write the
+# draw's record themselves (no PM4 encoded only to be decoded again). configs/sasrt_test_direct_flush_off.toml is the A/B.
+sasrt_cpu_direct_flush = true
+# The native Direct3D layer (sa2-nx's API-level renderer, docs/enhancements.md): DrawIndexedVertices (98 % of this game's
+# draws), DrawVertices, DrawVerticesUP / BeginVertices and the window scissor writer, and Clear, as native code writing
+# the ring's records (no PM4), in the main command buffer. configs/sasrt_test_api_off.toml is the A/B (both keys off).
+sasrt_api_draws = true
+sasrt_api_clears = true
+# Its ring of records readied ahead of the head with DC ZVA (no DRAM read before a record's stores; sa2-nx's round 11).
+sasrt_api_ring_zero_ahead = true
+# Vertex bindings (one NVK macro each on the console): draws whose vertex shader reads r0 also bind the upload buffer
+# once at 0 and shift the draw, with the index base compensated (sa2-nx's), and a draw rebinds only the bindings whose
+# offset changed. configs/sasrt_test_vertex_binds_off.toml turns both off.
+sasrt_cpu_vertices_base_zero_r0 = true
+sasrt_cpu_ring_bind_changed = true
+# The EDRAM bound-range plan of a draw asking what the previous draw asked is reused (sa2-nx's round 6).
+sasrt_cpu_ring_bound_plan_memo = true
+# A directly paired draw with the same shader objects and loaded shaders as the previous draw reuses its pairing and
+# final VS/PS choice (sa2-nx's round 6; verify mode compares it with the full identity checks on every such draw).
+sasrt_cpu_ring_identity_memo = true
+# The drawing threads' shader notes (sa2-nx's rounds 3 and 6): NoteShaderObject's startup diagnostic no longer takes a
+# mutex four times a draw once it has logged, finished objects sit in one shared table (no TLS lookup), and a draw whose
+# two shader objects are both finished skips the calls. configs/sasrt_test_note_shader_off.toml turns both off.
+sasrt_cpu_note_shader_fast = true
+sasrt_cpu_note_shader_pair = true
+# The CPU round of 2026-10-12 (docs/enhancements.md, "The CPU round of 2026-10-12"); configs/sasrt_test_cpu_round12_off.toml
+# turns its keys off. Compare-and-swap (the game's interlocked operations and the SDK's lock words) without the legacy
+# builtin's trailing `dmb ish`; false puts the barrier back at run time.
+sasrt_cpu_guest_cas_no_barrier = true
+# The ring's index cache matches a 16-bit index range by address and count within a frame and synchronization epoch
+# (no hash of the range on every indexed draw), and the index-layout diagnostic is one word instead of a hash set.
+sasrt_cpu_index_no_fingerprint = true
+sasrt_cpu_ring_draw_trims = true
+# Per-thread counters reached through the context each hook is handed (no thread_local, no shared counter): the
+# hot-native hooks' call counters and the native Direct3D layer's statistics.
+sasrt_cpu_hook_counter_ctx = true
+sasrt_api_thread_stats = true
+# SDK: an event set or a semaphore release that no thread is blocked on makes no wake syscall.
+thread_signal_skip_idle = true
+# SDK (2026-11-10): a thread blocked on an event sleeps on an address, not the event mutex's condition variable, so
+# waking it no longer hands it the mutex before it has a core (a Set of the same event waited behind it: 5.5 % of
+# the game thread in the handheld race); the 360's one release per Set kept (docs/render-thread-round-1109.md).
+thread_event_address_wait = true
+# SDK (sa2-nx's second CPU round): critical sections take their owner from the guest context's processor block instead
+# of looking the host thread up (85,000 enters a second in a race on the PC).
+kernel_critsec_pcr_owner = true
+
+# sasrt-nx (2026-11-08, the move to the ultimate base, docs/ultimate-base.md): halo3-nx's replay inheritance (h1) off for
+# this game: with it a replay of a captured run (sasrt_renut_scene_same_frame's slots) crashed in BuildInheritRuns in
+# the first PC run (an access violation 5.7 s in). The replays are as before the move.
+banjo_renut_replay_inherits = false
+
+# sasrt-nx (2026-11-08): the GPU round after the move to the ultimate base (docs/gpu-round-1108.md): 15 pixel-identical
+# GPU optimisations, each its own key; in-run A/B: banjo_renut_ab_target = 90 + the item's number (configs/sasrt_gpu_ab_*).
+sasrt_gpu_skip_inert_draws = true          # 0: draws that can write nothing are not drawn
+sasrt_gpu_precise_depth_resolve = true     # 1: depth decompressed only when written since its last decompression
+sasrt_gpu_plain_fetches = true             # 2: no sign / gamma / exponent code for plain fetches (constant 926)
+sasrt_gpu_alpha_spec = true                # 3: no discard without the alpha test (early depth for opaque draws)
+sasrt_gpu_gamma_upload_once = true         # 4: the gamma ramp copied when it changes
+sasrt_gpu_decompress_merge = true          # 5: a decompression's barrier merged with the pending one
+sasrt_gpu_readback_barrier_merge = true    # 6: a readback's full barriers merged with their neighbours
+sasrt_gpu_fetch_copy_compute = true        # 7: memexport seeds and fetch data copied by the 3D engine
+sasrt_gpu_data_cache_invalidate = true     # 8: buffer barriers drop data caches, not shader code
+sasrt_gpu_one_x = true                     # 9: a 1x draw's scale codes and pixel-position scale folded
+sasrt_gpu_face_sign = true                 # 10: the face sign without its reciprocal (constant 928)
+sasrt_gpu_readback_compute = true          # 11: the memexport readbacks copied by the 3D engine
+sasrt_gpu_tiled_cache = false              # 12: Maxwell's tiled caching (the console's to judge: configs/sasrt_gpu_try_tiled_cache)
+sasrt_gpu_texel_readback_compute = true    # 13: the 1x1 luminance read back by the 3D engine
+sasrt_gpu_lazy_depth_resolve = false       # 14: depth decompressed right before its read (configs/sasrt_gpu_try_lazy_depth)
+# The second round (2026-11-08, docs/gpu-round-1108.md "Round 2"): A/B 90 + the item's number (105-119).
+sasrt_gpu_seed_no_lead_wait = true         # 15: memexport seeds into fresh windows without a wait first
+sasrt_gpu_convert_lead_wait = true         # 16: a conversion without its wait when no export was drawn since one
+sasrt_gpu_identity_ramp = true             # 17: the linear gamma ramp not looked up at scan-out
+sasrt_gpu_convert_memo_keep = true         # 18: stream conversions used again across new exports
+sasrt_gpu_depth_resolve_float_ps = true    # 19: a depth resolve without words by a float-only shader
+sasrt_gpu_same_targets_kept = true         # 20: the bound targets not bound again
+sasrt_gpu_readback_spans = true            # 21: readback windows that follow one another copied by one dispatch
+sasrt_gpu_seed_wait_only = true            # 22: the wait after the seeds keeps the caches
+sasrt_gpu_readback_fence_flush = true      # 23: the compute readbacks without an L2 flush of their own
+sasrt_gpu_convert_tail_vertex_only = true  # 24: the wait after a conversion drops the texture cache alone
+sasrt_gpu_convert_lead_data_only = true    # 25: the wait before a conversion drops the data cache alone
+sasrt_gpu_clip_spec = true                 # 26: no user clip distance where no plane is set (constant 929)
+sasrt_gpu_lean_barrier_skip = true         # 27: a move into a target layout with nothing to wait for is no barrier
+sasrt_gpu_readback_barriers_trim = true    # 28: the readback's waits trimmed
+sasrt_gpu_export_raster_discard = true     # 29: export draws that write nothing drawn with the rasterizer off
+# The third round (2026-11-08, docs/gpu-round-1108.md "Round 3"): A/B 90 + the item's number (120 on).
+sasrt_gpu_seed_cpu_direct = true           # 30: memexport seeds written into their windows by the CPU: no copy dispatch, no wait
+sasrt_gpu_convert_tail_no_texture_drop = true # 31: the wait after a stream conversion keeps the texture cache too
+sasrt_gpu_vs_input_mask = true             # 32: vertex attributes the bound vertex shader variant never reads are not fetched
+sasrt_gpu_export_no_pixel_shader = true    # 33: export-only draws (rasterizer off) built without their pixel shader
+sasrt_gpu_vs_screen_space_spec = true      # 34: the vertex shaders' screen-space branch as a constant of the draw
+sasrt_gpu_vs_depth_remap_spec = true       # 35: the vertex shaders' depth remap branch as a constant of the draw
+sasrt_gpu_stacked_3d_spec = true           # 36: a 3D fetch's stacked-or-volume choice as a constant of the draw
+sasrt_gpu_stacked_filter_spec = true       # 37: a stacked fetch's layer filter and wrap as constants of the draw
+sasrt_gpu_fetch_endian_spec = true         # 38: a vertex shader's memory fetches' byte order as constants of the draw  # on again 2026-11-10 00:00: the octopus's explosion was the chain reuse's pipeline shortcut ignoring these words (fixed in draw.cpp; console octo_fix38)
+sasrt_gpu_gpr_cap = false                   # 39: OFF: slower on the console (spills)
+sasrt_gpu_gpr_cap_filter = false            # 40: OFF: slower on the console (spills)
+sasrt_gpu_export_format_spec = true        # 41: a memexport's format word as a constant of the draw: its one pack compiled
+sasrt_gpu_texture_drop_tracked = false      # 42: OFF: wrong on the console (compressed targets need the drop)
+sasrt_gpu_target_wait_tracked = true       # 43: a texture made a target waits only if it was sampled or copied since the last wait
+sasrt_gpu_read_wait_tracked = false         # 44: OFF: does nothing without item 42
+sasrt_gpu_handover_with_smaa = false       # 45: banjo's colour hand-over with SMAA: OFF, flat in the race (90 % of handed resolves drawn later anyway)
+sasrt_gpu_export_window_ubo = true         # 46: memexport windows read from the constant buffer, not a local array (constant 944)
+sasrt_gpu_export_list_topology = false     # 47: export draws as triangle or line lists: OFF, slower in the console A/B
+sasrt_gpu_export_no_point_gs = true        # 48: export point lists (rasterizer off) without the point-sprite geometry shader
+sasrt_gpu_depth_restore_direct = true      # 49: the EDRAM depth restore in one pass, its colour copy left out (console run I: identical on every texel, -1.35 ms)
+sasrt_gpu_depth_restore_whole_clear = true # 50: the depth restore clears depth and stencil together when it draws the whole target
+sasrt_gpu_fetch_conversion_spec = true     # 51: a fetch's sign, gamma and exponent words as constants of the draw (950-957)
+sasrt_gpu_fetch_exp_3d_spec = true         # 52: a 3D or cube fetch's exponent adjust as a constant of the draw (958-973)
+sasrt_gpu_convert_vertex_pass = false      # 53: exported stream conversions as a vertex pass (OFF: flat on the console, run D)
+sasrt_gpu_shadow_uncompressed = false      # 59: shadow-map depth targets without hardware compression (OFF: run K, shadows +0.62 ms, resolves -0.20)
+sasrt_gpu_shadow_d32f = true               # 68: shadow-map depth targets as D32F, no stencil (run L: shadows -0.15 ms, depth resolves -0.11; no stencil use seen)
+sasrt_gpu_skip_copy_back = true            # 69: a post copy of a resolve back into its own unchanged target not drawn (run O: 5050 checked, 0 texels differ)
+sasrt_gpu_depth_restore_reuse = true       # 60: a second restore of the same unchanged resolve binds the first one's depth (console -1.1 ms)
+sasrt_gpu_depth_restore_clear_skip = true  # 63: the direct restore keeps the clear where the depth is the clear depth (console -1.0 ms)
+# The fifth round's cuts: each CHANGES PIXELS (or may), all OFF; the user decides which stay (docs/gpu-round-1108.md, round 5).
+sasrt_gpu_cut_depth_alias = false          # 54 CHANGES PIXELS: light and composite passes test the G-buffer's own depth
+sasrt_gpu_cut_restore_copy_drop = false    # 55 CHANGES PIXELS: a restore copy left out is never drawn
+sasrt_gpu_cut_mip_nearest = false          # 56 CHANGES PIXELS: trilinear textures sampled bilinear
+sasrt_gpu_cut_lod_bias = false             # 57 CHANGES PIXELS: mipmapped textures half a level smaller
+sasrt_gpu_cut_shadow_two_thirds = false    # 58 CHANGES PIXELS: shadow maps at two thirds of their size (-0.5 ms; VISIBLY BAD: the car's shadow smears, run N)
+sasrt_gpu_cut_take_on_overwrite = false    # 61: a handed resolve keeps the image a full-screen post draw overwrites (needs 45). Identical in the race (run X: 0 of 324 M texels left), gain unclear (-0.97..+0.03 ms); split-screen unchecked
+sasrt_gpu_cut_gather_pcf = false           # 62 MAY CHANGE PIXELS: four point shadow taps as one gather
+sasrt_gpu_cut_ssao_off = false             # 64 CHANGES PIXELS: no ambient occlusion
+sasrt_gpu_cut_pcf_half = false             # 65 CHANGES PIXELS: the shadow filter averages 4 of its 8 PCF places (flat on the console)
+sasrt_gpu_cut_no_aa = false                # 66 CHANGES PIXELS: no anti-aliasing (SMAA not run; run H -1.66 ms)
+sasrt_gpu_cut_shadow_alpha_casters = false # 67 CHANGES PIXELS: alpha-tested shadow casters not drawn (flat on the console)
+sasrt_gpu_cut_far_cascade = false          # 70 CHANGES PIXELS: the far shadow cascade not drawn: no shadows far away (run O -1.93 ms)
+sasrt_gpu_cut_far_cascade_half_rate = false # 71 CHANGES PIXELS: the far shadow cascade drawn every other frame
+sasrt_gpu_cut_bloom_off = false            # 72 CHANGES PIXELS: no bloom (the 160x68 blurs cleared to black; run R -0.54 ms)
+sasrt_gpu_cut_smaa_low = false             # 73 CHANGES PIXELS: SMAA's low preset edge threshold (0.15; run S -0.82 ms)
+sasrt_gpu_cut_ssao_half_rate = false       # 74 CHANGES PIXELS: SSAO every other frame (run S: +0.47 ms, does not pay)
+sasrt_gpu_cut_shadows_off = false          # 75 CHANGES PIXELS: no shadows at all (run T -2.51 ms)
+sasrt_gpu_cut_point_lights_off = false     # 76 CHANGES PIXELS: no point lights (the sun and ambient stay; run T -0.96 ms)
+sasrt_gpu_shadow_atlas_direct = false      # 77: identical, but slower (run W: +0.45 ms; the shadow maps' depth goes uncompressed)
+sasrt_gpu_cut_ambient_sky = false          # 78 CHANGES PIXELS (the sky's ambient term, unless a later pass replaces it): the ambient pass ED0A8D53 not shaded at the clear depth (run X: flat, does not pay)
+
+# sasrt-nx (2026-11-08, the user's request): banjo-nx's SMAA in place of the game's FXAA. SMAA runs on the 1152x544
+# composite (pixel shader 2414CA963766CE4E) and the FXAA pass becomes its centre sample (sasrt_smaa_replaces_fxaa:
+# a plain upscale to 1280x720). configs/sasrt_fxaa_game.toml: the game's FXAA as before.
+# 2026-11-09 (the user: "anti-aliasing only pops up a couple of seconds after the race starts"): the race's first
+# seconds (and the menus) draw the composite without bloom, 670FBDA9D99C678B (the same tonemap and grading, one target),
+# and switch to 2414CA96 a few seconds in (run W's profile: 670FBDA9 until 10:16:33, then 2414CA96): SMAA after both.
+# sasrt-nx (2026-11-13, the base sync): base port 118 made msaa_level 1 the default (4 before). This game's races
+# make no multisampled target either way; 4 keeps what every run so far had.
+msaa_level = 4
+# sasrt-nx (2026-11-13, the base sync; console races c1113_sync2 / _sync3): two base keys that add work to every
+# queued op / converted stream and never act in this game: Blur's stack surface headers (port 76, key 215: this port's
+# own surface capture covers it) and Dishonored's committed-memory check on vertex fills (port 101: a heap lock and a
+# page walk per fill, for a fault this game never had). Off: render thread 19.65 -> 19.23 ms a frame, process CPU
+# -1.3 %, the same as cycle C's.
+blur_renut_stack_surface_headers = false
+dishonored_renut_vertex_readable_check = false
+banjo_renut_smaa = true
+banjo_renut_smaa_after_ps = "2414CA963766CE4E,670FBDA9D99C678B"
+sasrt_smaa_replaces_fxaa = true
+
+# Dynamic resolution (banjo's, the user's request 2026-11-09: handheld 480p to 720p, docked 540p to 1080p). The 3D
+# image's height follows the GPU's time a frame (a moving average against banjo_renut_dynamic_gpu_ms, 34.5 ms: down at
+# once, up after 1 s of fitting), in steps between the ends (multiples of 36 lines): handheld 477 (480 rounded to a
+# multiple of 9) 540 576 612 684 720, docked 540 648 756 864 972 1080. The HUD and menus stay at the display's size
+# (docked: the swapchain at 1920x1080). Not pixel-identical while it is below 720. At a scale other than 1x the light pass
+# and the composite test against the G-buffer's own depth (the EDRAM depth restore assumes 1x; render/draw.cpp).
+banjo_renut_dynamic_resolution = true
+# 2026-11-09 (the user: "raise it if there's 1.0 ms of room for 1 second; minimum 540p handheld, 720p docked"): the
+# steps are now handheld 540 576 612 648 684 720, docked 720 792 864 936 1008 1080; up when the next step is predicted
+# 1.0 ms under the budget for 1 s (sasrt_dynamic_up_room_ms; 0 = the old "under 85 % of it", which held 612).
+banjo_renut_dynamic_handheld_low = 540
+banjo_renut_dynamic_handheld_high = 720
+banjo_renut_dynamic_docked_low = 720
+banjo_renut_dynamic_docked_high = 1080
+sasrt_dynamic_up_room_ms = 1.0
+# 2026-11-13 (the user: "set GPU budget to 32ms let's see how it is"): the GPU's time a frame the height follows, 32 ms
+# (34.5 before, the code's default): a lower average height for more frames a second.
+banjo_renut_dynamic_gpu_ms = 32.0
+# 2026-11-09 (the user: "we need more steps, especially in docked"): 9 heights between the ends (4 before) on each mode's
+# own grid: handheld every 18 lines, 540 558 576 594 612 630 648 666 684 702 720 (36 can give only 6 there); docked every
+# 36, 720 756 792 828 864 900 936 972 1008 1044 1080.
+banjo_renut_dynamic_steps = 9
+sasrt_dynamic_lines_handheld = 18
+sasrt_dynamic_lines_docked = 36
+banjo_renut_display_height_docked = 1080
+# sasrt-nx (2026-11-10, the machine-copy batch; measured in run bt1: 25.55 fps, render thread 25.6 ms, 0 misses): the
+# recording device slots, the capture marks (the title device's deltas compare only the marked chunks, a whole check every
+# 32nd), and the recording thread (Model Instance) boosted. docs/machine-copies-1110.md.
+sasrt_record_device_slots = true
+sasrt_capture_marks = true
+sasrt_boost_threads = "Model Instance"
+sasrt_boost_priority = 58

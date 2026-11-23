@@ -2,6 +2,8 @@
   "title": "Sonic & All-Stars Racing Transformed",
   "package": "sasrt-nx",
   "nro": "sasrt.nro",
+  "shaders": true,
+  "early_alpha": false,
   "lz4": [
     "Data/(GameAssets|Frontend|GameData)\\.M00"
   ],
@@ -66,8 +68,11 @@
     "Data/sound/SoundBanks\\.pck",
     "Data/sound/StreamsMulti\\.pck"
   ],
+  "dlc": true,
   "texts": {
-    "game": "The folder your copy of Sonic &amp; All-Stars Racing Transformed was extracted to (with <code>default.xex</code> and <code>Data/</code>).",
+    "game": "Your Xbox 360 disc of Sonic &amp; All-Stars Racing Transformed as an <code>.iso</code>, or the folder it was extracted to (with <code>default.xex</code> and <code>Data/</code>).",
+    "dlc": "The game's downloadable content (the Bonus Pack: Metal Sonic and Outrun Bay), as the Xbox 360 package you have (a <code>LIVE</code> or <code>PIRS</code> file), or a folder of them. The game installs it at its first start.",
+    "settings": "The game writes its settings file, <code>sasrt.toml</code>, at its first start.",
     "footer": "Sonic &amp; All-Stars Racing Transformed is a trademark of SEGA. Not affiliated with or endorsed by SEGA, Sumo Digital, Microsoft or Nintendo."
   }
 }

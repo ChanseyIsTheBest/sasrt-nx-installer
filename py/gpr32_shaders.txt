@@ -1,0 +1,9 @@
+# sasrt-nx: none (banjo-nx lists its own fur / lit shaders here; the passes that read this list are A/B or diagnostic,
+# off by default). Shader hashes, one a line.
+# sasrt-nx (2026-11-08, the third GPU round): constant 910 here is given by sasrt_gpu_gpr_cap (the first three: 34, 33 and
+# 38 GPRs with the race's plain fetches, one or two registers spilled at 32) and sasrt_gpu_gpr_cap_filter (9041AFF6: 60
+# GPRs, about eight spilled) through PipelineKey::sasrt_words[7] (render/draw.cpp SasrtSpecWordsOf), not banjo_deko3d_gpr32.
+364C9BF8579CE602
+F646B7A8A3A7218B
+92D1F7E40EBB8E86
+9041AFF62011FC58
