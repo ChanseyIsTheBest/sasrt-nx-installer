@@ -1,6 +1,6 @@
 # sasrt-nx-installer
 
-Version 1.0.0, for **sasrt-nx 1.0.0**: Sonic & All-Stars Racing Transformed on the Nintendo Switch (homebrew), by
+Version 1.0.1, for **sasrt-nx 1.0.1**: Sonic & All-Stars Racing Transformed on the Nintendo Switch (homebrew), by
 ChanseyIsTheBest.
 
 This page makes the Switch package from **your own copy** of the game. It runs entirely in your browser: your game files
@@ -98,13 +98,13 @@ python -P tools/shader_records.py --game assets/game_root --dump out/renut_shade
   --out out/shader_records.json --image out/default_image.bin
 python -P tools/renut_release_shaders.py --only out/renut_nro_kept.txt
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/win/build_switch.ps1 -Pgo use -Final -Build out\nx-inplace -InPlace -ReleaseShaders
-python tools/release_toml.py --out out/release_1_0_0/sasrt.toml
+python tools/release_toml.py --out out/release_1_0_1/sasrt.toml
 python ../sasrt-nx-installer/tools/make_release.py --port . --nro out/nx-inplace/sasrt.nro --game assets/game_root \
   --image out/default_image.bin --dump out/renut_shader_dump_release --glsl out/deko3d_shaders_sync/glsl_opt \
   --records out/shader_records.json --nro-shaders out/renut_nro_kept.txt \
   --pipeline-list out/deko3d_shaders/lists/console_pipeline_list_1113sync.bin --extra-list <each other console list> \
   --variant-args "--generic --sasrt-guess --round-guess --earlykill-ab --runtime-log <each console log>" \
-  --file out/release_1_0_0/sasrt.toml:sasrt.toml --version 1.0.0
+  --file out/release_1_0_1/sasrt.toml:sasrt.toml --version 1.0.1
 ```
 
 The NRO keeps built in (`--only`, raw: `lib/nro.js` reads them out of the NRO and compiles their variants with the

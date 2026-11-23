@@ -425,8 +425,14 @@ banjo_renut_dynamic_resolution = true
 # 1.0 ms under the budget for 1 s (sasrt_dynamic_up_room_ms; 0 = the old "under 85 % of it", which held 612).
 banjo_renut_dynamic_handheld_low = 540
 banjo_renut_dynamic_handheld_high = 720
-banjo_renut_dynamic_docked_low = 720
-banjo_renut_dynamic_docked_high = 1080
+# 2026-11-24 (sasrt-nx 1.0.1, the user: "let's just make the game dynamic 720p in both handheld and docked 540p-720p by
+# default"): docked 540 to 720 too (720 to 1080 before), the 3D upscaled to the docked 1080 display. Docked's climb from
+# 720 made a bigger set of targets at every step, scattered the GPU region's free space and flip-flopped 720/756, and
+# the docked heap ran out (out/console_runs/c1124_101: user_1080, user_101c). Both modes now share their heights, and
+# docking reuses the same targets. Then ("Clamp dynamic resolution the config so it cant go above 720p"): the code caps
+# both ranges' ends at 720 whatever is set here (graphics_options.cpp DynamicHeight; fixed heights are not capped).
+banjo_renut_dynamic_docked_low = 540
+banjo_renut_dynamic_docked_high = 720
 sasrt_dynamic_up_room_ms = 1.0
 # 2026-11-13 (the user: "set GPU budget to 32ms let's see how it is"): the GPU's time a frame the height follows, 32 ms
 # (34.5 before, the code's default): a lower average height for more frames a second.
@@ -436,7 +442,8 @@ banjo_renut_dynamic_gpu_ms = 32.0
 # 36, 720 756 792 828 864 900 936 972 1008 1044 1080.
 banjo_renut_dynamic_steps = 9
 sasrt_dynamic_lines_handheld = 18
-sasrt_dynamic_lines_docked = 36
+# 2026-11-24 (1.0.1): docked on handheld's 18-line grid too, the same heights in both modes (540 558 ... 720)
+sasrt_dynamic_lines_docked = 18
 banjo_renut_display_height_docked = 1080
 # sasrt-nx (2026-11-10, the machine-copy batch; measured in run bt1: 25.55 fps, render thread 25.6 ms, 0 misses): the
 # recording device slots, the capture marks (the title device's deltas compare only the marked chunks, a whole check every
